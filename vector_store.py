@@ -1,87 +1,118 @@
-# ChromaDB is the vector database used by the RAG application.
-#
-# Previously, document embeddings were stored only temporarily in
-# Python memory and compared manually using cosine similarity
-# inside retriever.py.
-#
-# ChromaDB will take over two main responsibilities:
-# 1. Store the embeddings and corresponding document chunks.
-# 2. Retrieve the chunks that are semantically most similar
-#    to a user's question.
-#
-# The Python package is called "chromadb".
-# Importing it allows this module to create and interact with
-# a local ChromaDB instance.
+"""Owner-scoped persistence. Legacy unowned collections are never queried."""
+import os
+import time
+import uuid
+from dataclasses import dataclass
+from threading import RLock
+
 import chromadb
-
-# Create a persistent ChromaDB client.
-#
-# "Persistent" means that Chroma stores its database files on disk
-# instead of keeping everything only in memory.
-#
-# The path defines the local directory where ChromaDB stores its data.
-# If the application is restarted, the stored vectors can be loaded again.
-#
-# This is our first step from temporary in-memory retrieval toward
-# persistent vector storage.
-client = chromadb.PersistentClient(path="./chroma_db")
-
-# Create or load the collection that stores the document chunks.
-#
-# A collection groups related vectors, documents, IDs, and metadata.
-# It is conceptually similar to a table in a traditional database,
-# although ChromaDB is designed specifically for vector retrieval.
-#
-# "get_or_create_collection" is useful during development:
-# - If the collection does not exist yet, Chroma creates it.
-# - If it already exists, Chroma loads the existing collection.
-#
-# This prevents us from creating a new collection every time
-# the Streamlit application is restarted.
-collection = client.get_or_create_collection(
-    name="document_chunks"
-)
-
-# Store document chunks and embeddings using document-specific IDs.
-#
-# The source name is included in every ID so that chunks from
-# different uploaded documents do not receive identical IDs.
-#
-# Example:
-# annual_report.pdf -> annual_report.pdf_chunk_0
-# research.txt      -> research.txt_chunk_0
-#
-# This allows multiple documents to coexist in the same
-# ChromaDB collection without simple ID collisions.
+from chromadb.config import Settings
 
 
-def store_chunks(chunks, embeddings, source_name):
-    ids = [
-        f"{source_name}_chunk_{index}"
-        for index in range(len(chunks))
-    ]
+@dataclass(frozen=True)
+class Passage:
+    chunk_id: str
+    document_id: str
+    source: str
+    index: int
+    text: str
+    distance: float
 
-    collection.upsert(  # update&insert
-        ids=ids,
-        documents=chunks,
-        embeddings=embeddings.tolist()
-    )
 
-# Search ChromaDB for the document chunks that are most
-# semantically similar to the user's question.
-#
-# The query embedding is created with the same embedding model
-# that was used for the document chunks. This is essential because
-# query and document vectors must exist in the same vector space
-# in order to compare their semantic similarity.
-#
-# n_results=3 implements Top-k retrieval with k=3:
-# instead of returning only one chunk, ChromaDB returns the
-# three most relevant chunks.
-def query_chunks(query_embedding, n_results=3):
-    results = collection.query(
-        query_embeddings=[query_embedding.tolist()],
-        n_results=n_results
-    )
+class DocumentStore:
+    def __init__(self, path=None):
+        self.client = chromadb.PersistentClient(
+            path=str(path or os.environ.get("RAG_DATA_DIR", "./privacy_rag_db")),
+            settings=Settings(anonymized_telemetry=False),
+        )
+        self.collection = self.client.get_or_create_collection(
+            name="private_document_chunks_v1",
+            configuration={"hnsw": {"space": "cosine"}},
+        )
+        self.lock = RLock()
 
-    return results["documents"][0]
+    @staticmethod
+    def scope(owner, document_id=None):
+        if not isinstance(owner, str) or not owner.strip():
+            raise PermissionError("Anmeldung erforderlich.")
+        if document_id is None:
+            return {"owner": owner}
+        if not isinstance(document_id, str) or not document_id:
+            raise ValueError("Dokument auswählen.")
+        return {"$and": [{"owner": owner}, {"document_id": document_id}]}
+
+    def add(self, owner, source, chunks, embeddings, *, external_approved=False):
+        self.scope(owner)
+        if not chunks or not all(isinstance(c, str) and c.strip() for c in chunks):
+            raise ValueError("Keine lesbaren Textabschnitte vorhanden.")
+        vectors = embeddings.tolist() if hasattr(embeddings, "tolist") else embeddings
+        if len(vectors) != len(chunks):
+            raise ValueError("Für jeden Abschnitt wird ein Vektor benötigt.")
+        source = source.strip()[:120]
+        if not source:
+            raise ValueError("Dokumenttitel fehlt.")
+        document_id = uuid.uuid4().hex
+        ids = [f"{document_id}:{index}" for index in range(len(chunks))]
+        now = time.time()
+        metadata = [{"owner": owner, "document_id": document_id, "source": source,
+                     "index": i, "external_approved": bool(external_approved),
+                     "created_at": now} for i in range(len(chunks))]
+        with self.lock:
+            self.collection.add(ids=ids, documents=chunks, embeddings=vectors, metadatas=metadata)
+        return document_id
+
+    def documents(self, owner):
+        with self.lock:
+            rows = self.collection.get(where=self.scope(owner), include=["metadatas"])
+        docs = {}
+        for meta in rows["metadatas"]:
+            item = docs.setdefault(meta["document_id"], {
+                "document_id": meta["document_id"], "source": meta["source"],
+                "external_approved": meta["external_approved"], "chunks": 0,
+                "created_at": meta["created_at"],
+            })
+            item["chunks"] += 1
+        return sorted(docs.values(), key=lambda d: d["created_at"], reverse=True)
+
+    def document(self, owner, document_id):
+        self.scope(owner, document_id)
+        return next((d for d in self.documents(owner) if d["document_id"] == document_id), None)
+
+    def query(self, owner, document_id, query_embedding, n_results=3):
+        with self.lock:
+            doc = self.document(owner, document_id)
+            if doc is None:
+                return []
+            vector = query_embedding.tolist() if hasattr(query_embedding, "tolist") else query_embedding
+            rows = self.collection.query(
+                query_embeddings=[vector], where=self.scope(owner, document_id),
+                n_results=min(n_results, doc["chunks"]),
+                include=["documents", "metadatas", "distances"],
+            )
+            return [Passage(chunk_id, meta["document_id"], meta["source"], meta["index"], text, distance)
+                    for chunk_id, meta, text, distance in zip(
+                        rows["ids"][0], rows["metadatas"][0], rows["documents"][0], rows["distances"][0])]
+
+    def get_chunk(self, owner, document_id, chunk_id):
+        with self.lock:
+            rows = self.collection.get(ids=[chunk_id], where=self.scope(owner, document_id),
+                                       include=["documents"])
+        return rows["documents"][0] if rows["documents"] else None
+
+    def approve_external(self, owner, document_id, approved):
+        with self.lock:
+            rows = self.collection.get(where=self.scope(owner, document_id), include=["metadatas"])
+            if not rows["ids"]:
+                raise PermissionError("Dokument nicht verfügbar.")
+            metadata = [{**m, "external_approved": bool(approved)} for m in rows["metadatas"]]
+            self.collection.update(ids=rows["ids"], metadatas=metadata)
+
+    def delete(self, owner, document_id):
+        with self.lock:
+            rows = self.collection.get(where=self.scope(owner, document_id), include=[])
+            if rows["ids"]:
+                self.collection.delete(ids=rows["ids"], where=self.scope(owner, document_id))
+            remaining = self.collection.get(where=self.scope(owner, document_id), include=[])
+            if remaining["ids"]:
+                raise RuntimeError("Löschung konnte nicht bestätigt werden.")
+            return len(rows["ids"])

@@ -1,0 +1,16 @@
+# Datenschutzkonzept – RAG-Web-Assistent
+
+**Stand: 05.11.2026 | Einseitiger Portfolio-Entwurf | Umsetzung und Tests noch nicht am Code geprüft**
+
+- **Zweck und Nutzen:** Berechtigte Nutzer finden Antworten in freigegebenen Dokumenten; Antworten nennen die Quelle. Der Pilot verwendet ausschließlich erfundene oder ausdrücklich freigegebene, nicht vertrauliche Testdokumente.
+- **Daten:** Hochgeladene Dateien, ausgelesene Textabschnitte, Embeddings (Zahlenfolgen für die Suche), Dokument- und Benutzerkennungen, Fragen und Antworten. Embeddings gelten nicht pauschal als anonym. Auch Protokolle und mögliche Zwischenspeicher werden erfasst.
+- **Datenfluss beim Upload:** Browser → Anwendungsserver → Text auslesen und aufteilen → Embedding-Modell → Suchdatenbank. Originaldateien werden nur gespeichert, wenn erforderlich.
+- **Datenfluss bei Fragen:** Browser → Anmeldung und Berechtigungsprüfung → Frage in Suchvektor umwandeln → berechtigte Textstellen suchen → Frage und ausgewählte Textstellen an Sprachmodell → Antwort mit Quellen an Nutzer. Externe Embedding- und LLM-Dienste im Architekturplan markieren.
+- **Zulässigkeit und Zuständigkeit:** Vor echtem Unternehmenseinsatz Zweck, Rechtsgrundlage, Informationspflichten und Verantwortlichen festlegen; Datenschutz und IT einbeziehen. Bei Dienstleistern Rollen, gegebenenfalls Auftragsverarbeitung, Unterauftragnehmer, Datenstandorte, Drittstaatenzugriffe, Aufbewahrung und Trainingsnutzung prüfen. Erforderlichkeit einer Datenschutz-Folgenabschätzung bewerten.
+- **Risiko 1 – fremde Dokumente werden sichtbar:** Dateien und Textabschnitte eindeutig Nutzern bzw. Rollen zuordnen; Zugriff serverseitig vor Übergabe an das LLM prüfen. **Test:** Zwei Konten und eindeutige Testinformationen; Konto A darf weder Inhalte noch vertrauliche Quellenangaben von B erhalten.
+- **Risiko 2 – unbeabsichtigte externe Weitergabe:** Nur erforderliche, freigegebene Inhalte übermitteln; unnötige Personenangaben entfernen; externe Verarbeitung vorab freigeben. **Test:** Mit erfundenen Daten ausgehende Anfragen an Embedding- und LLM-Dienst prüfen; nur erwartete Inhalte dürfen enthalten sein.
+- **Risiko 3 – Daten bleiben nach Löschung abrufbar:** Datei-ID mit Textabschnitten und Embeddings verknüpfen; Löschung auf aktive Speicher und Zwischenspeicher übertragen. Für Chatverläufe, Protokolle und Backups Fristen und Wiederherstellungsverfahren festlegen. **Test:** Testdatei hochladen, finden, löschen und erneut suchen; auch direkte Abrufe alter IDs müssen scheitern.
+- **Betrieb und Freigabe:** Verschlüsselte Verbindungen, beschränkte Administrationsrechte, keine Inhaltsprotokollierung als Voreinstellung. Antworten, Quellen und Verhalten bei fehlender Evidenz prüfen. Produktive Nutzung erst nach dokumentierter Prüfung der offenen Punkte; Konzept ist keine Zertifizierung.
+- **Nachweis im Portfolio:** Für jede Maßnahme Status „geplant“, „umgesetzt“ oder „getestet“ mit Datum und Beleg festhalten. **Leitprinzip: rechtliche Anforderung → technische Maßnahme → überprüfbarer Test.**
+
+Fachliche Grundlage: [DSK-Orientierungshilfe zu RAG, Oktober 2025](https://www.datenschutzkonferenz-online.de/media/oh/DSK_OH_RAG.pdf). Maßnahmen und Tests sind Vorschläge für dieses Projekt.

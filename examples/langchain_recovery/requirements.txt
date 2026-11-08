@@ -1,0 +1,4 @@
+langchain-core==1.7.6
+langgraph==1.2.20
+langchain-nvidia-ai-endpoints==1.5.0
+httpx==0.28.1

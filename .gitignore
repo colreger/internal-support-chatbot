@@ -19,3 +19,14 @@ chroma_db/
 !.env.example
 __pycache__/
 .venv/
+
+# Private pilot data and generated local account credentials
+privacy_rag_db/
+.rag-users.json
+.rag-demo-access.md
+
+# Local portfolio preparation
+/README_backup.md
+/docs/Cheat-Sheet_RAG_Recht_und_Datenschutz.md
+/docs/Gespraechsvorbereitung_Kurzfassung.md
+/docs/interview-vorbereitung.md

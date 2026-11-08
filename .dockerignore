@@ -25,3 +25,13 @@ chroma_db/
 .git/
 .venv/
 __pycache__/
+
+# Never copy local pilot credentials or documents into an image
+privacy_rag_db/
+.rag-users.json
+.rag-demo-access.md
+tests/
+README_backup.md
+docs/Cheat-Sheet_RAG_Recht_und_Datenschutz.md
+docs/Gespraechsvorbereitung_Kurzfassung.md
+docs/interview-vorbereitung.md
