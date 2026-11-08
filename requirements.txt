@@ -3,3 +3,4 @@ python-dotenv==1.2.2
 openai==2.53.0
 sentence-transformers==6.0.0
 pypdf==6.16.2
+chromadb==1.5.9

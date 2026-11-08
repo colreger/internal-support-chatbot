@@ -1,0 +1,7 @@
+[
+  {"title": "Reisekostenrichtlinie", "text": "Bei Dienstreisen ist ein Taxi zum Flughafen erstattungsfähig, wenn keine zumutbare Verbindung mit öffentlichen Verkehrsmitteln verfügbar ist. Die Begründung und die Quittung müssen mit der Reisekostenabrechnung eingereicht werden.", "role": "employee", "external": true},
+  {"title": "Anleitung zur Reisekostenabrechnung", "text": "Reisekosten werden im fiktiven Portal Fahrtklar eingereicht. Lade die Hotelrechnung und alle Fahrtbelege spätestens 30 Tage nach Ende der Dienstreise hoch.", "role": "employee", "external": true},
+  {"title": "IT-Handbuch: VPN", "text": "Für den VPN-Zugang öffne die Anwendung Firmenzugang und bestätige die Anmeldung mit deinem zweiten Faktor. Bei einer Fehlermeldung hilft der IT-Service.", "role": "employee", "external": true},
+  {"title": "Urlaubsantrag", "text": "Beantrage Urlaub im fiktiven Portal Zeitfenster. Die Führungskraft prüft den Urlaubsantrag und bestätigt ihn im Portal.", "role": "employee", "external": true},
+  {"title": "HR: interne Gehaltsband-Prüfung", "text": "Nur HR: Die interne Gehaltsband-Prüfung für das fiktive Projekt Nordstern verwendet die Testkennung HR-NORDSTERN-482. Ergebnisse werden im HR-Team geprüft.", "role": "hr", "external": false}
+]
