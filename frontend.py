@@ -10,6 +10,8 @@ from threading import Lock
 
 import streamlit as st
 
+from claims import claim_with_policy
+from support_workflow import answer_travel_question
 from company_library import CompanyLibrary
 from auth import authenticate, load_users, valid_session
 from answer_machine import NVIDIA_BASE_URL, external_enabled, request_message
@@ -23,7 +25,7 @@ from tool_calling import (CALC_QUESTION, CALCULATOR_NAME, DEMO_QUESTION,
 from vector_store import DocumentStore
 
 st.set_page_config(page_title="RAG · Datenschutz-Pilot", page_icon="🔐")
-st.title("RAG Knowledge Assistant")
+st.title("Internal Support Chatbot")
 st.caption("Datenschutz-Pilot · lokale Suche zuerst · externe Weitergabe nur nach Freigabe")
 
 
@@ -89,7 +91,7 @@ if preview_mode and st.get_option("server.address") not in ("127.0.0.1", "::1"):
     st.error("Die Vorschau ohne Anmeldung benötigt eine lokale Bindung an 127.0.0.1 oder ::1.")
     st.stop()
 # The preview uses the employee fixture only; it never opens private storage.
-owner = "alice" if preview_mode else require_login()
+owner = "gandalf" if preview_mode else require_login()
 
 
 @st.cache_resource
@@ -131,8 +133,8 @@ with st.sidebar:
 if preview_mode:
     langchain_tab, tool_tab = st.tabs(["LangChain", "Tool Calling"])
 else:
-    langchain_tab, company_tab, tool_tab, upload_tab, query_tab, privacy_tab = st.tabs(
-        ["LangChain", "Firmenwissen (Testdaten)", "Tool Calling", "Private Uploads",
+    langchain_tab, company_tab, claims_tab, tool_tab, upload_tab, query_tab, privacy_tab = st.tabs(
+        ["LangChain", "Firmenwissen (Testdaten)", "Reisekostenstatus", "Tool Calling", "Private Uploads",
          "Private Suche", "Datenschutz-Demo"]
     )
 
@@ -236,7 +238,17 @@ with tool_tab:
         st.session_state.pop("tool_demo_result", None)
         try:
             if live:
-                message = request_message(tool_request).model_dump(include={"tool_calls"}, exclude_none=True)
+                reply = request_message(tool_request)
+                if reply.invalid_tool_calls:
+                    raise ValueError("Das Modell hat ungültige Tool-Argumente geliefert.")
+                message = {"tool_calls": [
+                    {
+                        "id": call.get("id"),
+                        "type": "function",
+                        "function": {"name": call["name"], "arguments": json.dumps(call["args"])},
+                    }
+                    for call in reply.tool_calls
+                ]}
             else:
                 message = offline_message(tool_question)
             followup = build_tool_followup(tool_request, message, library, owner)
@@ -281,6 +293,46 @@ if preview_mode:
     st.stop()
 
 
+with claims_tab:
+    st.subheader("Reisekostenstatus")
+    st.caption("Fiktive Kommunalverwaltung · Die Abfrage verwendet dein angemeldetes Konto.")
+    with st.form("claim_status"):
+        claim_id = st.text_input("Vorgangsnummer", value="RK-1042", max_chars=20)
+        submitted = st.form_submit_button("Status abrufen")
+    if submitted:
+        try:
+            claim = claim_with_policy(library, owner, claim_id.strip())
+        except (ValueError, LookupError) as exc:
+            st.error(str(exc))
+        else:
+            if claim is None:
+                st.info("Kein sichtbarer Vorgang gefunden.")
+            else:
+                st.write(claim["status"])
+                st.write(claim["deduction_reason"])
+                st.caption(claim["policy_title"])
+                st.text(claim["policy_excerpt"])
+
+
+    st.subheader("Frage zu Reisekosten")
+    with st.form("travel_question"):
+        question = st.text_input(
+            "Reisekostenfrage", placeholder="Wie ist der Stand von RK-1042?", max_chars=2000
+        )
+        asked = st.form_submit_button("Frage stellen")
+    if asked:
+        try:
+            result = answer_travel_question(library, owner, question)
+        except (ValueError, LookupError) as exc:
+            st.error(str(exc))
+        else:
+            st.write(result["answer"])
+            for source in result["sources"]:
+                st.caption(f"Quelle: {source['title']}")
+                if source["excerpt"] != result["answer"]:
+                    st.text(source["excerpt"])
+
+
 store = get_store()
 service = RagService(store, create_query_embedding)
 
@@ -293,7 +345,7 @@ with company_tab:
     st.subheader("Frag die Firmenbibliothek")
     st.caption("Fiktive Firmenbibliothek auf diesem Rechner. Die Dokumente sind bereits eingebunden.")
     hr_revoked = False
-    if owner == "bob":
+    if owner == "galadriel":
         with st.expander("Testlabor: HR-Zugriff entziehen"):
             st.caption("Nur für diese Demo-Sitzung. Das Testdokument bleibt in derselben Bibliothek.")
             hr_revoked = st.toggle("HR-Zugriff in dieser Sitzung entziehen", key="demo_hr_revoked",
@@ -493,14 +545,14 @@ with query_tab:
 with privacy_tab:
     st.subheader("Die drei Schutzmaßnahmen selbst ausprobieren")
     st.markdown("""
-1. **Firmenbibliothek:** Alice und Bob können die Reisekostenrichtlinie suchen. Nur Bob findet die interne Gehaltsband-Prüfung.
+1. **Firmenbibliothek:** Gandalf und Galadriel können die Reisekostenrichtlinie suchen. Nur Galadriel findet die interne Gehaltsband-Prüfung.
 2. **Private Uploads:** Lege unten ein fiktives Dokument an. Melde dich danach mit dem anderen Konto an: Titel, Quellen und Inhalte dürfen dort nicht erscheinen.
 3. **Weitergabe kontrollieren:** Suche lokal nach Fortbildungstagen. Öffne die Anfragevorschau. Ohne serverseitige Erlaubnis und Dokumentfreigabe bleibt der Sende-Knopf gesperrt.
 4. **Löschung:** Notiere die Dokument-ID, lösche das Dokument unter „Private Uploads“ und kontrolliere: Es fehlt in der Auswahl und kann nicht mehr durchsucht werden. Automatisierte Tests prüfen zusätzlich alte Chunk-IDs.
 """)
-    st.caption("Fiktive Kennungen: alice → ALICE-KIESEL-731 / 17 Tage; bob → BOB-LINDE-942 / 29 Tage.")
+    st.caption("Fiktive Kennungen: gandalf → Gandalf-KIESEL-731 / 17 Tage; galadriel → Galadriel-LINDE-942 / 29 Tage.")
     if st.button("Fiktives Testdokument für mein Konto anlegen"):
-        sample = "alice" if owner == "alice" else "bob" if owner == "bob" else None
+        sample = "gandalf" if owner == "gandalf" else "galadriel" if owner == "galadriel" else None
         text = ((Path(__file__).parent / "demo" / f"{sample}.txt").read_text()
                 if sample else "Fiktive Richtlinie: 11 Fortbildungstage pro Jahr.")
         try:

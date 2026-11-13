@@ -32,15 +32,27 @@ def request_message(payload):
     if not external_enabled():
         raise PermissionError("Externe KI ist serverseitig deaktiviert.")
     from dotenv import load_dotenv
-    from openai import OpenAI
+    from langchain_core.messages import convert_to_messages
+    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+    from langsmith import tracing_context
+
     load_dotenv()
     key = os.environ.get("NVIDIA_API_KEY")
     if not key:
         raise ValueError("NVIDIA_API_KEY fehlt. Die lokale Suche funktioniert ohne Schlüssel.")
-    # No retries: a click causes at most one application request.
-    with OpenAI(base_url=NVIDIA_BASE_URL, api_key=key, timeout=45, max_retries=0) as client:
-        result = client.chat.completions.create(**payload)
-    return result.choices[0].message
+    options = {name: payload[name] for name in ("tools", "tool_choice") if name in payload}
+    options.update(payload.get("extra_body", {}))
+    with tracing_context(enabled=False):
+        model = ChatNVIDIA(
+            model=payload["model"],
+            base_url=NVIDIA_BASE_URL,
+            api_key=key,
+            temperature=payload["temperature"],
+            max_completion_tokens=payload["max_tokens"],
+            timeout=45,
+            usage_telemetry_enabled=False,
+        )
+        return model.invoke(convert_to_messages(payload["messages"]), **options)
 
 
 def send_request(payload):

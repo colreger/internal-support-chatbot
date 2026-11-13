@@ -8,7 +8,7 @@ import re
 
 from answer_machine import build_request, external_enabled, send_request
 
-_ROLES = {"alice": frozenset({"employee"}), "bob": frozenset({"employee", "hr"})}
+_ROLES = {"gandalf": frozenset({"employee"}), "galadriel": frozenset({"employee", "hr"})}
 _STOP = set("a am an auf aus bei bin bis das dass dem den der des die ein eine einem einer es für gibt ich im in ist kann man mit nach ob sich sind so und vom von vor wann was welche welcher wem wer wie wird wo zu zum zur darf dürfen muss soll viele".split())
 
 

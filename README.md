@@ -1,6 +1,65 @@
-# RAG Knowledge Assistant
+# Internal Support Chatbot
 
-A document-grounded question-answering application built with Python and Streamlit. The current version is a local privacy pilot with fictional company documents and LangChain experiments. An earlier version was deployed to Microsoft Azure Container Apps.
+A Python and Streamlit assistant for internal support. It finds evidence in a fictional company library, filters documents by the signed-in user's permissions, and runs a validated tool call for travel reimbursements. An earlier document Q&A version was deployed to Azure Container Apps.
+
+## Portfolio demo
+
+The walkthrough uses the same claim lookup, policy index and validated calculator as the Streamlit application. It supplies a prepared tool call and runs without an API key.
+
+From the repository root with Python 3.12 or 3.13:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements-api.txt
+python demo_walkthrough.py
+```
+
+| Step | What to look for |
+| --- | --- |
+| Ask about RK-1042 | Gandalf sees the status and policy excerpt. Galadriel receives the same response as for an unknown claim. |
+| Ask about the general rule | Galadriel can still retrieve the policy on private expenses. |
+| Execute a tool call | Python validates the arguments and calculates EUR 275.40 in reimbursement from EUR 307.70 submitted. |
+
+To try the same workflow in the interface, follow [Privacy pilot: run locally](#privacy-pilot-run-locally). The [LangChain and LangGraph examples](examples/langchain_recovery/README.md) show a separate recovery workflow that retries retrieval when evidence is insufficient.
+
+## Travel claim status · fictional municipality
+
+In Streamlit, sign in and open **Reisekostenstatus**. Look up `RK-1042` as Gandalf and then as Galadriel. The tab uses the same Python service as the FastAPI endpoint below.
+
+The **Frage zu Reisekosten** form also accepts a free-text question such as `Wie ist der Stand meiner Abrechnung RK-1042?`. A LangGraph workflow with deterministic routing and LangChain tools uses a claim number when present, asks for one on status questions without an ID, and otherwise searches the permitted policy documents. A clarification is a prompt for a new question that includes the ID.
+
+### API access
+
+The local pilot combines an authenticated SQLite lookup with a source excerpt from the company library. The fixture contains one fictional record. The endpoint sends neither the claim nor the question to a model.
+
+```bash
+python -m pip install -r requirements-api.txt
+python scripts/setup_demo.py  # once, if demo accounts have not been created
+python -m uvicorn claims_api:app --host 127.0.0.1
+```
+
+Open Swagger at `http://127.0.0.1:8000/docs`. Use **Authorize** with Gandalf's generated credentials and request `GET /claims/RK-1042`. The response contains the status, deduction reason and relevant policy excerpt. Repeat with Galadriel. The same 404 is returned for a missing claim and a claim belonging to another account.
+
+For the same free-text workflow, use `POST /ask` with a JSON body containing `question`. Streamlit and FastAPI invoke the same LangGraph workflow. The request identity is bound to the tools by the server and is absent from their argument schemas.
+
+The account comes from the verified local login. The parameterized query filters by account and projects only the two fields needed for the answer. The response is marked `no-store`. The demo uses HTTP Basic on loopback and an in-memory fixture. Keep this endpoint local. Managed identity and persistent storage would be separate deployment work.
+
+Run the API regression tests after installing the API dependencies:
+
+```bash
+python -m unittest discover -s api_tests -v
+```
+
+The tests use temporary demo accounts and verify owner access, a uniform response for foreign and missing claims, common policy access, clarification and input validation.
+
+## Framework choices
+
+- **LangGraph** routes each travel question to the claim tool, policy search or clarification. Each request ends after one branch.
+- **LangChain** defines the claim and policy tools. The optional external answer path uses the ChatNVIDIA integration and retains the request preview and explicit send controls.
+- **Python and SQLite** enforce account permissions, run parameterized queries and calculate reimbursements. The offline flow performs no external model calls.
+
+See [support_workflow.py](support_workflow.py) for the graph and [claims.py](claims.py) for the account-scoped query.
 
 ## Overview
 
@@ -47,7 +106,7 @@ Model availability may change. The model can be replaced in `answer_machine.py`.
 
 ## Privacy pilot: run locally
 
-The app requires a local account. **Firmenwissen** searches a shared, preloaded fictional company library, with a restricted HR document visible only to Bob. Private uploads remain separate and use Chroma vector search. NVIDIA requests are **disabled by default**; the local views show original passages without an API key. See [the company library walkthrough](docs/firmenwissen.md).
+The app requires a local account. **Firmenwissen** searches a shared, preloaded fictional company library, with a restricted HR document visible only to Galadriel. Private uploads remain separate and use Chroma vector search. NVIDIA requests are **disabled by default**; the local views show original passages without an API key. See [the company library walkthrough](docs/firmenwissen.md).
 
 ```bash
 python3 -m venv venv
@@ -57,7 +116,7 @@ python scripts/setup_demo.py
 streamlit run frontend.py --server.address 127.0.0.1
 ```
 
-The setup script generates two local accounts, `alice` and `bob`. Their random passwords are in `.rag-demo-access.md`; only password hashes are stored in `.rag-users.json`. Both files are excluded from Git and Docker. The script refuses to overwrite existing accounts.
+The setup script generates two local accounts, `gandalf` and `galadriel`. Their random passwords are in `.rag-demo-access.md`; only password hashes are stored in `.rag-users.json`. Both files are excluded from Git and Docker. The script refuses to overwrite existing accounts.
 
 MiniLM weights must already exist locally. To download the public weights once, before using documents:
 

@@ -4,3 +4,6 @@ openai==2.53.0
 sentence-transformers==6.0.0
 pypdf==6.16.2
 chromadb==1.5.9
+langchain-core==1.7.6
+langgraph==1.2.20
+langchain-nvidia-ai-endpoints==1.5.0
